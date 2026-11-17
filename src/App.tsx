@@ -46,6 +46,77 @@ export default function App() {
     document.body.style.color = palette.text;
   }, [palette.bg, palette.text]);
 
+  // Dynamically update document.title, Apple Web App title, #app-favicon, and #apple-touch-icon (180x180 PNG via Canvas)
+  useEffect(() => {
+    const storeName = storeState.storeInfo.name.trim() || 'Mellow Bunny Studio';
+    document.title = storeName;
+
+    const appleTitleMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="apple-mobile-web-app-title"]',
+    );
+    if (appleTitleMeta) {
+      appleTitleMeta.content = storeName;
+    }
+
+    const avatarSrc = storeState.avatarUrl.trim();
+    if (!avatarSrc) return;
+
+    let cancelled = false;
+    const applyIconHref = (href: string) => {
+      if (cancelled) return;
+      const faviconEl = document.getElementById('app-favicon') as HTMLLinkElement | null;
+      const appleIconEl = document.getElementById('apple-touch-icon') as HTMLLinkElement | null;
+      if (faviconEl) faviconEl.href = href;
+      if (appleIconEl) appleIconEl.href = href;
+    };
+
+    const img = new Image();
+    if (!avatarSrc.startsWith('data:')) {
+      img.crossOrigin = 'anonymous';
+    }
+
+    img.onload = () => {
+      if (cancelled) return;
+      try {
+        const size = 180;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          applyIconHref(avatarSrc);
+          return;
+        }
+
+        // Center-crop image (object-fit: cover) onto 180x180 canvas
+        const scale = Math.max(size / (img.width || size), size / (img.height || size));
+        const drawW = (img.width || size) * scale;
+        const drawH = (img.height || size) * scale;
+        const offsetX = (size - drawW) / 2;
+        const offsetY = (size - drawH) / 2;
+
+        ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+        const pngDataUrl = canvas.toDataURL('image/png');
+        applyIconHref(pngDataUrl);
+      } catch {
+        // Fallback if external URL blocks CORS canvas export
+        applyIconHref(avatarSrc);
+      }
+    };
+
+    img.onerror = () => {
+      if (!cancelled) {
+        applyIconHref(avatarSrc);
+      }
+    };
+
+    img.src = avatarSrc;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeState.avatarUrl, storeState.storeInfo.name]);
+
   // Automatically fetch latest StoreSettings & Reviews (doGet) on page load using LocalStorage override or VITE_GOOGLE_SHEET_URL
   useEffect(() => {
     const activeUrl = sheetUrl.trim() || getActiveSheetUrl();

@@ -1,0 +1,8 @@
+{
+  "name": "Mellow Bunny Studio — Storefront & Reviews",
+  "description": "Minimalist pastel bio storefront, YouTube mini music player, customer credit story highlights, review system, and Google Sheets sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

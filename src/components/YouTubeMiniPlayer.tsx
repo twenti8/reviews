@@ -428,7 +428,7 @@ export function YouTubeMiniPlayer({ config, palette }: YouTubeMiniPlayerProps) {
           {/* Bottom: Current time · Progress Slider · Total Duration */}
           <div className="flex items-center gap-2.5">
             <span
-              className="text-[11px] font-mono tabular-nums w-9 shrink-0"
+              className="text-[11px] tabular-nums w-9 shrink-0"
               style={{ color: palette.textMuted }}
             >
               {formatDuration(currentTime)}
@@ -452,7 +452,7 @@ export function YouTubeMiniPlayer({ config, palette }: YouTubeMiniPlayerProps) {
             />
 
             <span
-              className="text-[11px] font-mono tabular-nums w-9 text-right shrink-0"
+              className="text-[11px] tabular-nums w-9 text-right shrink-0"
               style={{ color: palette.textMuted }}
             >
               {duration > 0 ? formatDuration(duration) : '--:--'}

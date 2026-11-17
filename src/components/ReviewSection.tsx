@@ -310,7 +310,7 @@ export function ReviewSection({ reviews, palette, onSubmitReview }: ReviewSectio
                     >
                       <span className="truncate max-w-[210px] sm:max-w-xs">{review.product}</span>
                       <span aria-hidden="true">·</span>
-                      <span className="font-mono tabular-nums text-[11px]">{review.date}</span>
+                      <span className="tabular-nums text-[11px]">{review.date}</span>
                     </p>
                   </div>
 

@@ -10,20 +10,22 @@ import { resolveThemePalette } from './data/themes';
 import type { ReviewItem, StoreState } from './types/store';
 import {
   deleteReviewFromGoogleSheets,
-  getInitialSheetUrl,
+  fetchGoogleSheetsPayload,
+  getActiveSheetUrl,
   loadLocalStoreState,
+  mergeStoreState,
   pullFromGoogleSheets,
   pushAllToGoogleSheets,
   pushNewReviewToGoogleSheets,
   pushSettingsToGoogleSheets,
   saveLocalStoreState,
   saveSheetUrl,
-} from './utils/sheetsSync';
+} from './utils/syncService';
 import { calculateReviewStats } from './utils/storeHelpers';
 
 export default function App() {
   const [storeState, setStoreState] = useState<StoreState>(() => loadLocalStoreState());
-  const [sheetUrl, setSheetUrl] = useState<string>(() => getInitialSheetUrl());
+  const [sheetUrl, setSheetUrl] = useState<string>(() => getActiveSheetUrl());
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
 
@@ -44,18 +46,19 @@ export default function App() {
     document.body.style.color = palette.text;
   }, [palette.bg, palette.text]);
 
-  // On initial mount, if VITE_GOOGLE_SHEET_URL or saved sheet URL is set, hydrate latest data silently
+  // Automatically fetch latest StoreSettings & Reviews (doGet) on page load using LocalStorage override or VITE_GOOGLE_SHEET_URL
   useEffect(() => {
-    if (!sheetUrl.trim()) return;
+    const activeUrl = sheetUrl.trim() || getActiveSheetUrl();
+    if (!activeUrl) return;
     let active = true;
-    pullFromGoogleSheets(sheetUrl, loadLocalStoreState())
-      .then((hydrated) => {
+    fetchGoogleSheetsPayload(activeUrl)
+      .then((incoming) => {
         if (active) {
-          setStoreState(hydrated);
+          setStoreState((prev) => mergeStoreState(prev, incoming));
         }
       })
       .catch(() => {
-        // Keep local data gracefully if offline or URL not yet deployed
+        // Keep local fallback gracefully if offline or URL not yet deployed
       });
     return () => {
       active = false;
@@ -66,7 +69,8 @@ export default function App() {
     (updater: (prev: StoreState) => StoreState, syncSettingsKeys?: string[]) => {
       setStoreState((prev) => {
         const next = updater(prev);
-        if (sheetUrl.trim() && syncSettingsKeys && syncSettingsKeys.length > 0) {
+        const activeUrl = sheetUrl.trim() || getActiveSheetUrl();
+        if (activeUrl && syncSettingsKeys && syncSettingsKeys.length > 0) {
           syncSettingsKeys.forEach((k) => pendingKeysRef.current.add(k));
           if (syncTimerRef.current) {
             window.clearTimeout(syncTimerRef.current);
@@ -83,7 +87,7 @@ export default function App() {
               if (key === 'creditHighlights') payload.creditHighlights = next.creditHighlights;
             });
             pendingKeysRef.current.clear();
-            pushSettingsToGoogleSheets(sheetUrl, payload).catch(() => {
+            pushSettingsToGoogleSheets(activeUrl, payload).catch(() => {
               // Silent background sync fallback; Admin tab has manual push/pull too
             });
           }, 600);
@@ -100,11 +104,12 @@ export default function App() {
         ...prev,
         reviews: [review, ...prev.reviews],
       }));
-      if (sheetUrl.trim()) {
+      const activeUrl = sheetUrl.trim() || getActiveSheetUrl();
+      if (activeUrl) {
         try {
-          await pushNewReviewToGoogleSheets(sheetUrl, review);
+          await pushNewReviewToGoogleSheets(activeUrl, review);
         } catch {
-          // Local review remains saved even if network fails
+          // Keep optimistic local review if network fails transiently
         }
       }
     },
@@ -117,9 +122,10 @@ export default function App() {
         ...prev,
         reviews: prev.reviews.filter((r) => r.id !== reviewId),
       }));
-      if (sheetUrl.trim()) {
+      const activeUrl = sheetUrl.trim() || getActiveSheetUrl();
+      if (activeUrl) {
         try {
-          await deleteReviewFromGoogleSheets(sheetUrl, reviewId);
+          await deleteReviewFromGoogleSheets(activeUrl, reviewId);
         } catch {
           // ignore transient offline error
         }
@@ -129,14 +135,14 @@ export default function App() {
   );
 
   const handleSaveSheetUrl = useCallback((nextUrl: string) => {
-    const trimmed = nextUrl.trim();
-    setSheetUrl(trimmed);
-    saveSheetUrl(trimmed);
+    const resolved = saveSheetUrl(nextUrl);
+    setSheetUrl(resolved);
   }, []);
 
   const handlePullFromSheets = useCallback(
     async (targetUrl: string) => {
-      const updated = await pullFromGoogleSheets(targetUrl, storeState);
+      const effectiveUrl = targetUrl.trim() || getActiveSheetUrl();
+      const updated = await pullFromGoogleSheets(effectiveUrl, storeState);
       setStoreState(updated);
       handleSaveSheetUrl(targetUrl);
     },
@@ -145,7 +151,8 @@ export default function App() {
 
   const handlePushAllToSheets = useCallback(
     async (targetUrl: string) => {
-      await pushAllToGoogleSheets(targetUrl, storeState);
+      const effectiveUrl = targetUrl.trim() || getActiveSheetUrl();
+      await pushAllToGoogleSheets(effectiveUrl, storeState);
       handleSaveSheetUrl(targetUrl);
     },
     [storeState, handleSaveSheetUrl],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   CloudDownload,
@@ -75,6 +75,10 @@ export function AdminDashboard({
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [showCodeGs, setShowCodeGs] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  useEffect(() => {
+    setSheetUrlInput(sheetUrl);
+  }, [sheetUrl]);
 
   const lightPresets = useMemo(
     () => PRESET_THEMES.filter((t) => t.mode === 'light'),
@@ -1089,7 +1093,12 @@ export function AdminDashboard({
                       type="button"
                       onClick={() => {
                         onSaveSheetUrl(sheetUrlInput);
-                        showToast('ok', 'บันทึก Web App URL เรียบร้อยแล้ว');
+                        showToast(
+                          'ok',
+                          sheetUrlInput.trim()
+                            ? 'บันทึก Web App URL เรียบร้อยแล้ว'
+                            : 'รีเซ็ตกลับไปใช้ค่าเริ่มต้น VITE_GOOGLE_SHEET_URL แล้ว',
+                        );
                       }}
                       className="min-h-[44px] px-5 rounded-2xl text-xs font-semibold whitespace-nowrap"
                       style={{ backgroundColor: palette.accent, color: palette.accentText }}
@@ -1097,6 +1106,9 @@ export function AdminDashboard({
                       บันทึก URL
                     </button>
                   </div>
+                  <p className="text-[11px] mt-1.5" style={{ color: palette.textMuted }}>
+                    หากเว้นว่างแล้วกดบันทึก ระบบจะกลับไปใช้ค่าเริ่มต้นจาก Environment Variable (VITE_GOOGLE_SHEET_URL) อัตโนมัติ
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5 pt-1">

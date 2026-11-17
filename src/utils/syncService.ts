@@ -1,26 +1,51 @@
 import { DEFAULT_STORE_STATE } from '../data/defaultData';
 import type { ReviewItem, StoreState } from '../types/store';
+import { resolveActiveSheetUrl } from './storeHelpers';
 
 const STORAGE_STATE_KEY = 'pastel_bio_store_state_v1';
 const STORAGE_SHEET_URL_KEY = 'pastel_bio_google_sheet_url_v1';
 
-export function getInitialSheetUrl(): string {
-  try {
-    const saved = localStorage.getItem(STORAGE_SHEET_URL_KEY);
-    if (saved !== null) return saved;
-  } catch {
-    // ignore storage failures
-  }
+export function getEnvSheetUrl(): string {
   const envUrl = import.meta.env.VITE_GOOGLE_SHEET_URL;
   return typeof envUrl === 'string' ? envUrl.trim() : '';
 }
 
-export function saveSheetUrl(url: string): void {
+export function getSavedOverrideSheetUrl(): string {
   try {
-    localStorage.setItem(STORAGE_SHEET_URL_KEY, url.trim());
+    const saved = localStorage.getItem(STORAGE_SHEET_URL_KEY);
+    return typeof saved === 'string' ? saved.trim() : '';
   } catch {
-    // ignore
+    return '';
   }
+}
+
+/**
+ * Resolution order:
+ * 1. Non-empty URL saved in LocalStorage by Admin (override)
+ * 2. Environment Variable VITE_GOOGLE_SHEET_URL (Default for all visitors automatically)
+ */
+export function getActiveSheetUrl(): string {
+  return resolveActiveSheetUrl(getSavedOverrideSheetUrl(), getEnvSheetUrl());
+}
+
+export function getInitialSheetUrl(): string {
+  return getActiveSheetUrl();
+}
+
+export function saveSheetUrl(url: string): string {
+  const trimmed = url.trim();
+  const envUrl = getEnvSheetUrl();
+  try {
+    // Only store an override if admin entered a non-empty URL different from env default
+    if (trimmed.length > 0 && trimmed !== envUrl) {
+      localStorage.setItem(STORAGE_SHEET_URL_KEY, trimmed);
+    } else {
+      localStorage.removeItem(STORAGE_SHEET_URL_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return getActiveSheetUrl();
 }
 
 export function loadLocalStoreState(): StoreState {
@@ -88,15 +113,12 @@ function extractSettingsPayload(state: StoreState) {
   };
 }
 
-export async function pullFromGoogleSheets(
-  sheetUrl: string,
-  currentState: StoreState,
-): Promise<StoreState> {
-  const url = sheetUrl.trim();
+export async function fetchGoogleSheetsPayload(sheetUrl: string): Promise<Partial<StoreState>> {
+  const url = sheetUrl.trim() || getActiveSheetUrl();
   if (!url) {
-    throw new Error('กรุณากรอก Web App URL ก่อนดึงข้อมูล');
+    throw new Error('ยังไม่ได้ตั้งค่า Web App URL หรือ VITE_GOOGLE_SHEET_URL');
   }
-  const response = await fetch(url, { method: 'GET' });
+  const response = await fetch(url, { method: 'GET', cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`เชื่อมต่อ Google Sheets ไม่สำเร็จ (${response.status})`);
   }
@@ -110,15 +132,22 @@ export async function pullFromGoogleSheets(
     throw new Error(data.error || 'เกิดข้อผิดพลาดในการอ่านข้อมูลจากชีต');
   }
 
-  const incoming: Partial<StoreState> = {
+  return {
     ...(data.settings || {}),
     ...(Array.isArray(data.reviews) ? { reviews: data.reviews } : {}),
   };
+}
+
+export async function pullFromGoogleSheets(
+  sheetUrl: string,
+  currentState: StoreState,
+): Promise<StoreState> {
+  const incoming = await fetchGoogleSheetsPayload(sheetUrl);
   return mergeStoreState(currentState, incoming);
 }
 
 async function postToAppsScript(sheetUrl: string, body: Record<string, unknown>): Promise<void> {
-  const url = sheetUrl.trim();
+  const url = sheetUrl.trim() || getActiveSheetUrl();
   if (!url) return;
 
   // Use text/plain to prevent CORS preflight OPTIONS failure on Google Apps Script Web Apps
@@ -149,10 +178,11 @@ async function postToAppsScript(sheetUrl: string, body: Record<string, unknown>)
 }
 
 export async function pushAllToGoogleSheets(sheetUrl: string, state: StoreState): Promise<void> {
-  if (!sheetUrl.trim()) {
-    throw new Error('กรุณากรอก Web App URL ก่อนอัปโหลดข้อมูล');
+  const url = sheetUrl.trim() || getActiveSheetUrl();
+  if (!url) {
+    throw new Error('กรุณากรอก Web App URL หรือตั้งค่า VITE_GOOGLE_SHEET_URL ก่อนอัปโหลดข้อมูล');
   }
-  await postToAppsScript(sheetUrl, {
+  await postToAppsScript(url, {
     action: 'syncAll',
     settings: extractSettingsPayload(state),
     reviews: state.reviews,
@@ -163,8 +193,9 @@ export async function pushSettingsToGoogleSheets(
   sheetUrl: string,
   settings: Partial<ReturnType<typeof extractSettingsPayload>>,
 ): Promise<void> {
-  if (!sheetUrl.trim()) return;
-  await postToAppsScript(sheetUrl, {
+  const url = sheetUrl.trim() || getActiveSheetUrl();
+  if (!url) return;
+  await postToAppsScript(url, {
     action: 'saveSettings',
     settings,
   });
@@ -174,16 +205,20 @@ export async function pushNewReviewToGoogleSheets(
   sheetUrl: string,
   review: ReviewItem,
 ): Promise<void> {
-  if (!sheetUrl.trim()) return;
-  await postToAppsScript(sheetUrl, {
+  const url = sheetUrl.trim() || getActiveSheetUrl();
+  if (!url) {
+    throw new Error('ยังไม่ได้ตั้งค่าลิงก์ Google Sheets สำหรับบันทึกรีวิว');
+  }
+  await postToAppsScript(url, {
     action: 'addReview',
     review,
   });
 }
 
 export async function deleteReviewFromGoogleSheets(sheetUrl: string, id: string): Promise<void> {
-  if (!sheetUrl.trim()) return;
-  await postToAppsScript(sheetUrl, {
+  const url = sheetUrl.trim() || getActiveSheetUrl();
+  if (!url) return;
+  await postToAppsScript(url, {
     action: 'deleteReview',
     id,
   });

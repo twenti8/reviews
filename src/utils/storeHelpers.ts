@@ -204,3 +204,15 @@ export function validateReviewInput(input: {
     errors,
   };
 }
+
+export function resolveActiveSheetUrl(
+  localSavedUrl: string | null | undefined,
+  envUrl: string | null | undefined,
+): string {
+  const localTrimmed = typeof localSavedUrl === 'string' ? localSavedUrl.trim() : '';
+  if (localTrimmed.length > 0) {
+    return localTrimmed;
+  }
+  return typeof envUrl === 'string' ? envUrl.trim() : '';
+}
+

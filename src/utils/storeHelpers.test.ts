@@ -9,6 +9,7 @@ import {
   joinChunks,
   paginateReviews,
   parseYouTubeUrl,
+  resolveActiveSheetUrl,
   sortReviewsNewestFirst,
   validateReviewInput,
 } from './storeHelpers';
@@ -134,3 +135,20 @@ test('validateReviewInput rejects missing fields and accepts valid input', () =>
   assert.equal(valid.valid, true);
   assert.deepEqual(valid.errors, {});
 });
+
+test('resolveActiveSheetUrl prioritizes non-empty localStorage override and otherwise uses env VITE_GOOGLE_SHEET_URL', () => {
+  const envUrl = 'https://script.google.com/macros/s/default-env/exec';
+  // Empty / null / whitespace localStorage falls back to envUrl
+  assert.equal(resolveActiveSheetUrl(null, envUrl), envUrl);
+  assert.equal(resolveActiveSheetUrl(undefined, envUrl), envUrl);
+  assert.equal(resolveActiveSheetUrl('', envUrl), envUrl);
+  assert.equal(resolveActiveSheetUrl('   ', envUrl), envUrl);
+
+  // Non-empty admin override in localStorage takes precedence
+  const adminUrl = 'https://script.google.com/macros/s/admin-override/exec';
+  assert.equal(resolveActiveSheetUrl(`  ${adminUrl}  `, envUrl), adminUrl);
+
+  // Both missing returns empty string
+  assert.equal(resolveActiveSheetUrl(null, ''), '');
+});
+
